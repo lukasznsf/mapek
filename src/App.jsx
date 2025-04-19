@@ -5,7 +5,6 @@ import PlayerSelect from "./components/PlayerSelect";
 import Sidebar from "./components/Sidebar";
 import * as turf from "@turf/turf";
 
-// (Reszta pliku identyczna jak poprzednia wersja)
 () {
   const [points, setPoints] = useState([]);
   const [polygonList, setPolygonList] = useState([]);
