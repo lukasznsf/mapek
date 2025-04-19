@@ -13,7 +13,7 @@ export async function simulateTravel(points, speedKmH, updateRunnerPosition) {
       const lat = from.lat + ((to.lat - from.lat) * step) / steps;
       const lng = from.lng + ((to.lng - from.lng) * step) / steps;
       updateRunnerPosition({ lat, lng });
-      await delay(1000 / 20); // ~50ms = 20fps
+      await delay(1000 / 20);
     }
   }
 

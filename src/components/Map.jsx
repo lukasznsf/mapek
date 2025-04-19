@@ -31,6 +31,10 @@ export default function Map({
   runnerPosition,
   mapRef,
 }) {
+  const closingLine = (points.length >= 2)
+    ? [points[points.length - 1], points[0]]
+    : null;
+
   return (
     <MapContainer
       center={[50.6722, 17.9253]}
@@ -47,8 +51,13 @@ export default function Map({
         <Marker key={idx} position={pos} />
       ))}
       {points.length > 1 && <Polyline positions={points} color="blue" />}
+      {closingLine && <Polyline positions={closingLine} color="blue" dashArray="5,5" />}
       {polygonList.map((poly, idx) => (
-        <Polygon key={idx} positions={poly} pathOptions={{ color: "green" }} />
+        <Polygon
+          key={idx}
+          positions={poly.coords}
+          pathOptions={{ color: poly.color, fillOpacity: 0.4 }}
+        />
       ))}
       {runnerPosition && (
         <Marker position={runnerPosition} icon={runnerIcon} />

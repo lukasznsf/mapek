@@ -1,22 +1,44 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Map from "./components/Map";
 import { simulateTravel } from "./utils/simulator";
+import PlayerSelect from "./components/PlayerSelect";
+import Sidebar from "./components/Sidebar";
 import * as turf from "@turf/turf";
 
-export default function App() {
+// (Reszta pliku identyczna jak poprzednia wersja)
+() {
   const [points, setPoints] = useState([]);
   const [polygonList, setPolygonList] = useState([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [runnerPosition, setRunnerPosition] = useState(null);
+  const [playerColor, setPlayerColor] = useState(null);
   const mapRef = useRef(null);
 
+  useEffect(() => {
+    const saved = localStorage.getItem("territoryData");
+    if (saved) {
+      const { polygons, color } = JSON.parse(saved);
+      setPolygonList(polygons);
+      setPlayerColor(color);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (playerColor) {
+      const data = {
+        polygons: polygonList,
+        color: playerColor
+      };
+      localStorage.setItem("territoryData", JSON.stringify(data));
+    }
+  }, [polygonList, playerColor]);
+
   const addPoint = (latlng) => {
-    if (isSimulating) return;
+    if (isSimulating || !playerColor) return;
     if (points.length > 2) {
       const first = points[0];
       const distanceToStart = getDistance(latlng, first);
       if (distanceToStart < 20) {
-        // ZAMKNIĘCIE PĘTLI I PRZEJĘCIE TERENU
         simulate();
         return;
       }
@@ -43,25 +65,26 @@ export default function App() {
     setIsSimulating(true);
     await simulateTravel(looped, 200, (pos) => setRunnerPosition(pos));
 
-    const newPolygon = turf.polygon([[...looped.map(p => [p.lng, p.lat]), [looped[0].lng, looped[0].lat]]]);
-    let merged = newPolygon;
+    const newPoly = turf.polygon([[...looped.map(p => [p.lng, p.lat]), [looped[0].lng, looped[0].lat]]]);
+    let merged = newPoly;
 
-    polygonList.forEach((poly) => {
-      const turfPoly = turf.polygon([[...poly.map(p => [p.lng, p.lat]), [poly[0].lng, poly[0].lat]]]);
-      if (turf.booleanOverlap(turfPoly, newPolygon) || turf.booleanContains(turfPoly, newPolygon) || turf.booleanContains(newPolygon, turfPoly)) {
-        merged = turf.union(merged, turfPoly);
-      }
+    const overlapping = polygonList.filter(p => p.color === playerColor && (
+      turf.booleanOverlap(turf.polygon([[...p.coords.map(c => [c.lng, c.lat]), [p.coords[0].lng, p.coords[0].lat]]]), newPoly) ||
+      turf.booleanContains(newPoly, turf.polygon([[...p.coords.map(c => [c.lng, c.lat]), [p.coords[0].lng, p.coords[0].lat]]])) ||
+      turf.booleanContains(turf.polygon([[...p.coords.map(c => [c.lng, c.lat]), [p.coords[0].lng, p.coords[0].lat]]]), newPoly)
+    ));
+
+    overlapping.forEach(p => {
+      const turfPoly = turf.polygon([[...p.coords.map(c => [c.lng, c.lat]), [p.coords[0].lng, p.coords[0].lat]]]);
+      merged = turf.union(merged, turfPoly);
     });
 
-    const mergedCoords = turf.getCoords(merged)[0].map(([lng, lat]) => ({ lat, lng }));
+    const coords = turf.getCoords(merged)[0].map(([lng, lat]) => ({ lat, lng }));
+    const area = turf.area(merged) / 1e6;
 
-    // usuń polygony, które się pokrywały
-    const nonOverlapping = polygonList.filter(poly => {
-      const turfPoly = turf.polygon([[...poly.map(p => [p.lng, p.lat]), [poly[0].lng, poly[0].lat]]]);
-      return !turf.booleanOverlap(turfPoly, newPolygon) && !turf.booleanContains(newPolygon, turfPoly);
-    });
+    const updatedList = polygonList.filter(p => !overlapping.includes(p));
+    setPolygonList([...updatedList, { coords, color: playerColor, area }]);
 
-    setPolygonList([...nonOverlapping, mergedCoords]);
     setPoints([]);
     setIsSimulating(false);
     setRunnerPosition(null);
@@ -94,8 +117,15 @@ export default function App() {
     return totalDistance() / speedMps;
   };
 
+  const totalArea = polygonList
+    .filter(p => p.color === playerColor)
+    .reduce((sum, p) => sum + p.area, 0)
+    .toFixed(2);
+
   return (
     <>
+      {!playerColor && <PlayerSelect setPlayerColor={setPlayerColor} />}
+
       <Map
         points={points}
         addPoint={addPoint}
@@ -132,6 +162,11 @@ export default function App() {
         {points.length >= 2 && (
           <span style={{ alignSelf: 'center', fontSize: '0.9rem' }}>
             📏 {(totalDistance() / 1000).toFixed(2)} km • ⏱️ {Math.round(estimatedTime())} sek
+          </span>
+        )}
+        {playerColor && (
+          <span style={{ alignSelf: 'center', fontSize: '0.9rem', color: playerColor }}>
+            🌍 Twoje terytorium: {totalArea} km²
           </span>
         )}
       </div>
