@@ -1,5 +1,5 @@
 {
-  "name": "territory-capture-mvp",
+  "name": "territory-capture-multiplayer",
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
