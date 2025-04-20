@@ -20,6 +20,21 @@ export async function insertPolygonToSupabase({ coords, color, area }) {
   if (error) console.error("❌ Supabase insert error:", error.message);
 }
 
+export async function loadExistingPolygons() {
+  const { data, error } = await supabase.from("territories").select("*");
+  if (error) {
+    console.error("❌ Błąd ładowania z Supabase:", error.message);
+    return [];
+  }
+  return data.map(p => ({
+    coords: Array.isArray(p.coords) ? p.coords.map(c =>
+      Array.isArray(c) ? c : [c.lat, c.lng]
+    ).filter(c => c.length === 2) : [],
+    color: p.player_color || "gray",
+    area: p.area || 0
+  }));
+}
+
 export function subscribeToPolygonUpdates(onUpdate) {
   return supabase
     .channel("public:territories")

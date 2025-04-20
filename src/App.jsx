@@ -4,7 +4,7 @@ import Sidebar from "./components/Sidebar";
 import PlayerSelect from "./components/PlayerSelect";
 import * as turf from "@turf/turf";
 import { simulateTravel } from "./utils/simulator";
-import { insertPolygonToSupabase, subscribeToPolygonUpdates } from "./supabaseHelpers";
+import { insertPolygonToSupabase, subscribeToPolygonUpdates, loadExistingPolygons } from "./supabaseHelpers";
 
 export default function App() {
   const [points, setPoints] = useState([]);
@@ -14,28 +14,35 @@ export default function App() {
   const [playerColor, setPlayerColor] = useState(null);
   const mapRef = useRef(null);
 
+  // Load player color or require selection
   useEffect(() => {
     const savedColor = localStorage.getItem("territory_player_color");
     const validColors = ["green", "red", "blue", "yellow"];
     if (validColors.includes(savedColor)) {
       setPlayerColor(savedColor);
+    } else {
+      setPlayerColor(null);
     }
+  }, []);
+
+  // Load existing polygons on mount
+  useEffect(() => {
+    loadExistingPolygons().then(polys => {
+      setPolygonList(polys);
+      console.log("⬅️ Załadowano istn. polygony:", polys);
+    });
 
     const sub = subscribeToPolygonUpdates((newPoly) => {
-      console.log("📥 Supabase coords:", newPoly.coords);
-
+      console.log("📥 update z Supabase", newPoly);
       const coordsRaw = Array.isArray(newPoly.coords) ? newPoly.coords : [];
 
       const coords = coordsRaw.map(p => {
         if (Array.isArray(p) && p.length === 2) return p;
         if (p && typeof p === "object" && "lat" in p && "lng" in p) return [p.lat, p.lng];
         return null;
-      }).filter(p => Array.isArray(p) && p.length === 2 && typeof p[0] === "number" && typeof p[1] === "number");
+      }).filter(p => Array.isArray(p) && typeof p[0] === "number" && typeof p[1] === "number");
 
-      if (coords.length < 3) {
-        console.warn("❌ Pominięto błędny polygon:", coords);
-        return;
-      }
+      if (coords.length < 3) return;
 
       setPolygonList(prev => {
         const alreadyExists = prev.some(p =>
