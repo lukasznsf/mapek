@@ -15,38 +15,48 @@ export default function App() {
   const mapRef = useRef(null);
 
   useEffect(() => {
-    try {
-      const savedColor = localStorage.getItem("territory_player_color");
-      const valid = ["green", "red", "blue", "yellow"];
-      if (valid.includes(savedColor)) setPlayerColor(savedColor);
-
-      const sub = subscribeToPolygonUpdates((newPoly) => {
-        console.log("📥 update z Supabase", newPoly);
-        let coordsRaw = Array.isArray(newPoly.coords) ? newPoly.coords : [];
-
-        const coords = coordsRaw.map(p => {
-          if (Array.isArray(p)) return p;
-          if (typeof p === "object" && "lat" in p && "lng" in p) return [p.lat, p.lng];
-          return null;
-        }).filter(Boolean);
-
-        if (coords.length >= 3) {
-          setPolygonList(prev => [...prev, {
-            coords,
-            color: newPoly.player_color || "gray",
-            area: newPoly.area || 0
-          }]);
-        }
-      });
-
-      return () => sub.unsubscribe();
-    } catch (e) {
-      console.error("❌ useEffect błąd:", e);
+    const savedColor = localStorage.getItem("territory_player_color");
+    const validColors = ["green", "red", "blue", "yellow"];
+    if (validColors.includes(savedColor)) {
+      setPlayerColor(savedColor);
     }
+
+    const sub = subscribeToPolygonUpdates((newPoly) => {
+      console.log("📥 Supabase coords:", newPoly.coords);
+
+      const coordsRaw = Array.isArray(newPoly.coords) ? newPoly.coords : [];
+
+      const coords = coordsRaw.map(p => {
+        if (Array.isArray(p) && p.length === 2) return p;
+        if (p && typeof p === "object" && "lat" in p && "lng" in p) return [p.lat, p.lng];
+        return null;
+      }).filter(p => Array.isArray(p) && p.length === 2 && typeof p[0] === "number" && typeof p[1] === "number");
+
+      if (coords.length < 3) {
+        console.warn("❌ Pominięto błędny polygon:", coords);
+        return;
+      }
+
+      setPolygonList(prev => {
+        const alreadyExists = prev.some(p =>
+          JSON.stringify(p.coords) === JSON.stringify(coords)
+        );
+        if (alreadyExists) return prev;
+        return [...prev, {
+          coords,
+          color: newPoly.player_color || "gray",
+          area: newPoly.area || 0
+        }];
+      });
+    });
+
+    return () => sub.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (playerColor) localStorage.setItem("territory_player_color", playerColor);
+    if (playerColor) {
+      localStorage.setItem("territory_player_color", playerColor);
+    }
   }, [playerColor]);
 
   const addPoint = (latlng) => {
