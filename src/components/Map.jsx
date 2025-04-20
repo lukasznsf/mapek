@@ -20,6 +20,12 @@ function ClickHandler({ onClick }) {
 export default function Map({ points, addPoint, polygonList, runnerPosition, mapRef }) {
   const closingLine = (points.length > 1) ? [points[points.length - 1], points[0]] : null;
 
+  const groupedPolygons = {};
+  polygonList.forEach(p => {
+    if (!groupedPolygons[p.color]) groupedPolygons[p.color] = [];
+    groupedPolygons[p.color].push(...p.coords);
+  });
+
   return (
     <MapContainer
       center={[50.6722, 17.9253]}
@@ -32,14 +38,9 @@ export default function Map({ points, addPoint, polygonList, runnerPosition, map
       {points.map((pos, i) => <Marker key={i} position={pos} />)}
       {points.length > 1 && <Polyline positions={points} color="blue" />}
       {closingLine && <Polyline positions={closingLine} color="blue" dashArray="5,5" />}
-      {polygonList.map((poly, i) => {
-        try {
-          return <Polygon key={i} positions={poly.coords} pathOptions={{ color: poly.color, fillOpacity: 0.4 }} />;
-        } catch (e) {
-          console.warn("Błąd rysowania polygonu:", poly, e);
-          return null;
-        }
-      })}
+      {Object.entries(groupedPolygons).map(([color, coords], i) => (
+        <Polygon key={i} positions={coords} pathOptions={{ color, fillOpacity: 0.4 }} />
+      ))}
       {runnerPosition && <Marker position={runnerPosition} icon={runnerIcon} />}
     </MapContainer>
   );

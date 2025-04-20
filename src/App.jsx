@@ -14,7 +14,6 @@ export default function App() {
   const [playerColor, setPlayerColor] = useState(null);
   const mapRef = useRef(null);
 
-  // Load player color or require selection
   useEffect(() => {
     const savedColor = localStorage.getItem("territory_player_color");
     const validColors = ["green", "red", "blue", "yellow"];
@@ -25,15 +24,9 @@ export default function App() {
     }
   }, []);
 
-  // Load existing polygons on mount
   useEffect(() => {
-    loadExistingPolygons().then(polys => {
-      setPolygonList(polys);
-      console.log("⬅️ Załadowano istn. polygony:", polys);
-    });
-
+    loadExistingPolygons().then(polys => setPolygonList(polys));
     const sub = subscribeToPolygonUpdates((newPoly) => {
-      console.log("📥 update z Supabase", newPoly);
       const coordsRaw = Array.isArray(newPoly.coords) ? newPoly.coords : [];
 
       const coords = coordsRaw.map(p => {
@@ -56,7 +49,6 @@ export default function App() {
         }];
       });
     });
-
     return () => sub.unsubscribe();
   }, []);
 
@@ -115,6 +107,10 @@ export default function App() {
       {points.length > 0 && <><button onClick={undoLast}>↩ Cofnij</button><button onClick={resetPath}>❌ Reset</button></>}
       <span>📏 {distanceKm} km • ⏱ {timeSec}s</span>
       <span style={{ color: playerColor }}>🌍 Twoje: {totalArea} km²</span>
+      <button onClick={() => {
+        localStorage.removeItem("territory_player_color");
+        window.location.reload();
+      }}>🎨 Zmień gracza</button>
     </div>
   </>;
 }
