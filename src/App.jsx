@@ -19,12 +19,34 @@ export default function App() {
     if (savedColor) setPlayerColor(savedColor);
 
     const sub = subscribeToPolygonUpdates((newPoly) => {
+      if (!newPoly.coords) return;
+
+      let coordsRaw = Array.isArray(newPoly.coords) ? newPoly.coords : [];
+      if (!Array.isArray(coordsRaw)) return;
+
+      const coords = coordsRaw.map(p => {
+        if (Array.isArray(p)) return p;
+        if (p && typeof p === "object" && "lat" in p && "lng" in p) return [p.lat, p.lng];
+        return null;
+      }).filter(Boolean);
+
+      if (coords.length < 3) return;
+
+      const newPolygon = {
+        coords,
+        color: newPoly.player_color || "gray",
+        area: typeof newPoly.area === "number" ? newPoly.area : 0
+      };
+
       setPolygonList(prev => {
-        const alreadyExists = prev.some(p => JSON.stringify(p.coords) === JSON.stringify(newPoly.coords));
+        const alreadyExists = prev.some(p =>
+          JSON.stringify(p.coords) === JSON.stringify(newPolygon.coords)
+        );
         if (alreadyExists) return prev;
-        return [...prev, newPoly];
+        return [...prev, newPolygon];
       });
     });
+
     return () => sub.unsubscribe();
   }, []);
 
@@ -69,7 +91,7 @@ export default function App() {
     i ? acc + getDistance(arr[i - 1], cur) : acc, 0);
   const estimatedTime = () => totalDistance() / (200 * 1000 / 3600);
   const totalArea = polygonList.filter(p => p.color === playerColor)
-    .reduce((sum, p) => sum + p.area, 0).toFixed(2);
+    .reduce((sum, p) => sum + (p.area || 0), 0).toFixed(2);
 
   return <>
     {!playerColor && <PlayerSelect setPlayerColor={setPlayerColor} />}
