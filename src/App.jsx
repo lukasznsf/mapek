@@ -16,7 +16,10 @@ export default function App() {
 
   useEffect(() => {
     const savedColor = localStorage.getItem("territory_player_color");
-    if (savedColor) setPlayerColor(savedColor);
+    const validColors = ["green", "red", "blue", "yellow"];
+    if (savedColor && validColors.includes(savedColor)) {
+      setPlayerColor(savedColor);
+    }
 
     const sub = subscribeToPolygonUpdates((newPoly) => {
       if (!newPoly.coords) return;
@@ -75,8 +78,16 @@ export default function App() {
     await simulateTravel(looped, 200, pos => setRunnerPosition(pos));
     const poly = turf.polygon([[...looped.map(p => [p.lng, p.lat]), [looped[0].lng, looped[0].lat]]]);
     const area = turf.area(poly) / 1e6;
-    insertPolygonToSupabase({ coords: looped, color: playerColor, area });
-    setPoints([]); setRunnerPosition(null); setIsSimulating(false);
+
+    insertPolygonToSupabase({
+      coords: looped.map(p => [p.lat, p.lng]),
+      color: playerColor,
+      area
+    });
+
+    setPoints([]);
+    setRunnerPosition(null);
+    setIsSimulating(false);
   };
 
   const getDistance = (a, b) => {
