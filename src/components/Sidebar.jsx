@@ -2,12 +2,8 @@ import React from "react";
 
 export default function Sidebar({ polygonList }) {
   const colors = ["green", "red", "blue", "yellow"];
-
   const stats = colors.map(color => {
-    const total = polygonList
-      .filter(p => p.color === color)
-      .reduce((sum, p) => sum + (p.area || 0), 0)
-      .toFixed(2);
+    const total = polygonList.filter(p => p.color === color).reduce((sum, p) => sum + (p.area || 0), 0).toFixed(2);
     return { color, total };
   });
 

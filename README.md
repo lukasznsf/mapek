@@ -1,5 +1,5 @@
-# Territory Capture Multiplayer
+# Territory Capture Supabase Multiplayer
 
 1. `npm install`
 2. `npm run dev`
-3. Otwórz: http://localhost:5173
+3. http://localhost:5173

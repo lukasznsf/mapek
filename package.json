@@ -1,5 +1,5 @@
 {
-  "name": "territory-capture-multiplayer",
+  "name": "territory-capture-supabase",
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
@@ -7,11 +7,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.39.5",
+    "@turf/turf": "^6.5.0",
     "leaflet": "^1.9.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-leaflet": "^4.2.1",
-    "@turf/turf": "^6.5.0"
+    "react-leaflet": "^4.2.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^3.1.0",
