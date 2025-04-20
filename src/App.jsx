@@ -4,7 +4,13 @@ import Sidebar from "./components/Sidebar";
 import PlayerSelect from "./components/PlayerSelect";
 import * as turf from "@turf/turf";
 import { simulateTravel } from "./utils/simulator";
-import { insertPolygonToSupabase, subscribeToPolygonUpdates, loadExistingPolygons } from "./supabaseHelpers";
+import {
+  insertPolygonToSupabase,
+  subscribeToPolygonUpdates,
+  loadExistingPolygons,
+  deletePolygonByCoords,
+  replacePolygon
+} from "./supabaseHelpers";
 
 export default function App() {
   const [points, setPoints] = useState([]);
@@ -74,13 +80,41 @@ export default function App() {
     const path = [...points, points[0]];
     setIsSimulating(true);
     await simulateTravel(path, 200, setRunnerPosition);
-    const poly = turf.polygon([[...path.map(p => [p.lng, p.lat]), [path[0].lng, path[0].lat]]]);
-    const area = turf.area(poly) / 1e6;
-    insertPolygonToSupabase({
+
+    const newPoly = turf.polygon([[...path.map(p => [p.lng, p.lat]), [path[0].lng, path[0].lat]]]);
+    const newArea = turf.area(newPoly) / 1e6;
+
+    // Odejmujemy z innych graczy
+    for (const existing of polygonList) {
+      if (existing.color === playerColor) continue;
+
+      try {
+        const exPoly = turf.polygon([[...existing.coords.map(p => [p[1], p[0]])]]);
+        const diff = turf.difference(exPoly, newPoly);
+        if (!diff) {
+          await deletePolygonByCoords(existing.coords);
+        } else {
+          const simplified = turf.simplify(diff, { tolerance: 0.0001, highQuality: false });
+          const coordinates = simplified.geometry.coordinates?.[0]?.map(c => [c[1], c[0]]) || [];
+          const newArea = turf.area(simplified) / 1e6;
+          if (coordinates.length >= 3 && newArea > 0.0001) {
+            await replacePolygon(existing.coords, coordinates, existing.color, newArea);
+          } else {
+            await deletePolygonByCoords(existing.coords);
+          }
+        }
+      } catch (e) {
+        console.warn("❌ Błąd przy turf.difference", e);
+      }
+    }
+
+    // Zapisujemy nowy polygon gracza
+    await insertPolygonToSupabase({
       coords: path.map(p => [p.lat, p.lng]),
       color: playerColor,
-      area
+      area: newArea
     });
+
     setPoints([]); setRunnerPosition(null); setIsSimulating(false);
   };
 
