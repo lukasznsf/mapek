@@ -1,5 +1,5 @@
 {
-  "name": "territory-capture-stable",
+  "name": "territory-capture-simple",
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",

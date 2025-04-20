@@ -1,122 +1,50 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import Map from "./components/Map";
 import Sidebar from "./components/Sidebar";
 import PlayerSelect from "./components/PlayerSelect";
 import * as turf from "@turf/turf";
-import { simulateTravel } from "./utils/simulator";
 import {
   insertPolygonToSupabase,
-  subscribeToPolygonUpdates,
   loadExistingPolygons,
-  deletePolygonByCoords,
-  replacePolygon
+  subscribeToPolygonUpdates,
+  updatePolygonById,
+  deletePolygonById
 } from "./supabaseHelpers";
 
 export default function App() {
   const [points, setPoints] = useState([]);
   const [polygonList, setPolygonList] = useState([]);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [runnerPosition, setRunnerPosition] = useState(null);
   const [playerColor, setPlayerColor] = useState(null);
-  const mapRef = useRef(null);
 
   useEffect(() => {
     const savedColor = localStorage.getItem("territory_player_color");
-    const validColors = ["green", "red", "blue", "yellow"];
-    if (validColors.includes(savedColor)) {
-      setPlayerColor(savedColor);
-    } else {
-      setPlayerColor(null);
-    }
+    if (savedColor) setPlayerColor(savedColor);
   }, []);
 
   useEffect(() => {
-    loadExistingPolygons().then(polys => setPolygonList(polys));
+    loadExistingPolygons().then(setPolygonList);
     const sub = subscribeToPolygonUpdates((newPoly) => {
-      const coordsRaw = Array.isArray(newPoly.coords) ? newPoly.coords : [];
-
-      const coords = coordsRaw.map(p => {
-        if (Array.isArray(p) && p.length === 2) return p;
-        if (p && typeof p === "object" && "lat" in p && "lng" in p) return [p.lat, p.lng];
-        return null;
-      }).filter(p => Array.isArray(p) && typeof p[0] === "number" && typeof p[1] === "number");
-
-      if (coords.length < 3) return;
-
-      setPolygonList(prev => {
-        const alreadyExists = prev.some(p =>
-          JSON.stringify(p.coords) === JSON.stringify(coords)
-        );
-        if (alreadyExists) return prev;
-        return [...prev, {
-          coords,
-          color: newPoly.player_color || "gray",
-          area: newPoly.area || 0
-        }];
+      if (!newPoly?.coords || !Array.isArray(newPoly.coords)) return;
+      setPolygonList((prev) => {
+        const exists = prev.some((p) => p.id === newPoly.id);
+        if (exists) return prev;
+        return [
+          ...prev,
+          {
+            id: newPoly.id,
+            coords: newPoly.coords,
+            color: newPoly.player_color || "gray",
+            area: newPoly.area || 0,
+          },
+        ];
       });
     });
     return () => sub.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (playerColor) {
-      localStorage.setItem("territory_player_color", playerColor);
-    }
+    if (playerColor) localStorage.setItem("territory_player_color", playerColor);
   }, [playerColor]);
-
-  const addPoint = (latlng) => {
-    if (!playerColor || isSimulating) return;
-    if (points.length > 2 && getDistance(latlng, points[0]) < 20) {
-      simulate();
-      return;
-    }
-    setPoints([...points, latlng]);
-  };
-
-  const resetPath = () => !isSimulating && setPoints([]);
-  const undoLast = () => !isSimulating && setPoints(points.slice(0, -1));
-
-  const simulate = async () => {
-    const path = [...points, points[0]];
-    setIsSimulating(true);
-    await simulateTravel(path, 200, setRunnerPosition);
-
-    const newPoly = turf.polygon([[...path.map(p => [p.lng, p.lat]), [path[0].lng, path[0].lat]]]);
-    const newArea = turf.area(newPoly) / 1e6;
-
-    // Odejmujemy z innych graczy
-    for (const existing of polygonList) {
-      if (existing.color === playerColor) continue;
-
-      try {
-        const exPoly = turf.polygon([[...existing.coords.map(p => [p[1], p[0]])]]);
-        const diff = turf.difference(exPoly, newPoly);
-        if (!diff) {
-          await deletePolygonByCoords(existing.coords);
-        } else {
-          const simplified = turf.simplify(diff, { tolerance: 0.0001, highQuality: false });
-          const coordinates = simplified.geometry.coordinates?.[0]?.map(c => [c[1], c[0]]) || [];
-          const newArea = turf.area(simplified) / 1e6;
-          if (coordinates.length >= 3 && newArea > 0.0001) {
-            await replacePolygon(existing.coords, coordinates, existing.color, newArea);
-          } else {
-            await deletePolygonByCoords(existing.coords);
-          }
-        }
-      } catch (e) {
-        console.warn("❌ Błąd przy turf.difference", e);
-      }
-    }
-
-    // Zapisujemy nowy polygon gracza
-    await insertPolygonToSupabase({
-      coords: path.map(p => [p.lat, p.lng]),
-      color: playerColor,
-      area: newArea
-    });
-
-    setPoints([]); setRunnerPosition(null); setIsSimulating(false);
-  };
 
   const getDistance = (a, b) => {
     const R = 6371000, toRad = deg => deg * Math.PI / 180;
@@ -126,25 +54,59 @@ export default function App() {
     return R * 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
   };
 
-  const distanceKm = (points.reduce((acc, cur, i, arr) =>
-    i ? acc + getDistance(arr[i - 1], cur) : acc, 0) / 1000).toFixed(2);
-  const timeSec = Math.round((distanceKm / 200) * 3600);
-  const totalArea = polygonList.filter(p => p.color === playerColor)
-    .reduce((acc, p) => acc + (p.area || 0), 0).toFixed(2);
+  const addPoint = async (latlng) => {
+    if (!playerColor) return;
+    if (points.length > 2 && getDistance(latlng, points[0]) < 20) {
+      const path = [...points, points[0]];
+      const newPoly = turf.polygon([[...path.map(p => [p.lng, p.lat]), [path[0].lng, path[0].lat]]]);
+      const area = turf.area(newPoly) / 1e6;
+      const newCoords = path.map(p => [p.lat, p.lng]);
+
+      const sameColorPolys = polygonList.filter(p => p.color === playerColor);
+      const otherPolys = polygonList.filter(p => p.color !== playerColor);
+
+      // scalanie własnych
+      let merged = newPoly;
+      for (const poly of sameColorPolys) {
+        try {
+          merged = turf.union(merged, turf.polygon([[...poly.coords.map(([a,b])=>[b,a]), [poly.coords[0][1], poly.coords[0][0]]]]));
+        } catch {}
+      }
+
+      const mergedCoords = turf.getCoords(merged)[0].map(([lng, lat]) => [lat, lng]);
+      const mergedArea = turf.area(merged) / 1e6;
+
+      // odejmowanie innym
+      for (const poly of otherPolys) {
+        const basePoly = turf.polygon([[...poly.coords.map(([a,b])=>[b,a]), [poly.coords[0][1], poly.coords[0][0]]]]);
+        let diff;
+        try {
+          diff = turf.difference(basePoly, merged);
+        } catch {}
+        if (!diff) {
+          await deletePolygonById(poly.id);
+        } else {
+          const diffCoords = turf.getCoords(diff)[0].map(([lng, lat]) => [lat, lng]);
+          const diffArea = turf.area(diff) / 1e6;
+          await updatePolygonById(poly.id, diffCoords, diffArea);
+        }
+      }
+
+      // usuń swoje stare i dodaj scalony
+      for (const poly of sameColorPolys) {
+        await deletePolygonById(poly.id);
+      }
+
+      await insertPolygonToSupabase({ coords: mergedCoords, color: playerColor, area: mergedArea });
+      setPoints([]);
+    } else {
+      setPoints([...points, latlng]);
+    }
+  };
 
   return <>
     {!playerColor && <PlayerSelect setPlayerColor={setPlayerColor} />}
-    <Map points={points} addPoint={addPoint} polygonList={polygonList} runnerPosition={runnerPosition} mapRef={mapRef} />
+    <Map points={points} addPoint={addPoint} polygonList={polygonList} />
     <Sidebar polygonList={polygonList} />
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', zIndex: 9999, padding: '12px', display: 'flex', justifyContent: 'center', gap: 12 }}>
-      {points.length >= 3 && <button onClick={simulate}>🏁 Przejmij</button>}
-      {points.length > 0 && <><button onClick={undoLast}>↩ Cofnij</button><button onClick={resetPath}>❌ Reset</button></>}
-      <span>📏 {distanceKm} km • ⏱ {timeSec}s</span>
-      <span style={{ color: playerColor }}>🌍 Twoje: {totalArea} km²</span>
-      <button onClick={() => {
-        localStorage.removeItem("territory_player_color");
-        window.location.reload();
-      }}>🎨 Zmień gracza</button>
-    </div>
   </>;
 }
