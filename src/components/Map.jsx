@@ -44,9 +44,20 @@ export default function Map({ points, addPoint, polygonList, runnerPosition, map
       {points.map((pos, idx) => <Marker key={idx} position={pos} />)}
       {points.length > 1 && <Polyline positions={points} color="blue" />}
       {closingLine && <Polyline positions={closingLine} color="blue" dashArray="5,5" />}
-      {polygonList.map((poly, idx) => (
-        <Polygon key={idx} positions={poly.coords} pathOptions={{ color: poly.color, fillOpacity: 0.4 }} />
-      ))}
+      {polygonList.map((poly, idx) => {
+        try {
+          return (
+            <Polygon
+              key={idx}
+              positions={poly.coords}
+              pathOptions={{ color: poly.color, fillOpacity: 0.4 }}
+            />
+          );
+        } catch (e) {
+          console.error("❌ Błąd rysowania polygonu:", poly, e);
+          return null;
+        }
+      })}
       {runnerPosition && <Marker position={runnerPosition} icon={runnerIcon} />}
     </MapContainer>
   );
