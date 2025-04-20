@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Map from "./components/Map";
 import Sidebar from "./components/Sidebar";
 import PlayerSelect from "./components/PlayerSelect";
+import Toolbar from "./components/Toolbar";
 import * as turf from "@turf/turf";
 import {
   insertPolygonToSupabase,
@@ -54,59 +55,74 @@ export default function App() {
     return R * 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
   };
 
-  const addPoint = async (latlng) => {
+  const tryCapture = async () => {
+    if (points.length < 3 || !playerColor) return;
+
+    const path = [...points, points[0]];
+    const newPoly = turf.polygon([[...path.map(p => [p.lng, p.lat]), [path[0].lng, path[0].lat]]]);
+    const area = turf.area(newPoly) / 1e6;
+    const newCoords = path.map(p => [p.lat, p.lng]);
+
+    const sameColorPolys = polygonList.filter(p => p.color === playerColor);
+    const otherPolys = polygonList.filter(p => p.color !== playerColor);
+
+    let merged = newPoly;
+    for (const poly of sameColorPolys) {
+      try {
+        merged = turf.union(merged, turf.polygon([[...poly.coords.map(([a,b])=>[b,a]), [poly.coords[0][1], poly.coords[0][0]]]]));
+      } catch {}
+    }
+
+    const mergedCoords = turf.getCoords(merged)[0].map(([lng, lat]) => [lat, lng]);
+    const mergedArea = turf.area(merged) / 1e6;
+
+    for (const poly of otherPolys) {
+      const basePoly = turf.polygon([[...poly.coords.map(([a,b])=>[b,a]), [poly.coords[0][1], poly.coords[0][0]]]]);
+      let diff;
+      try {
+        diff = turf.difference(basePoly, merged);
+      } catch {}
+      if (!diff) {
+        await deletePolygonById(poly.id);
+      } else {
+        const diffCoords = turf.getCoords(diff)[0].map(([lng, lat]) => [lat, lng]);
+        const diffArea = turf.area(diff) / 1e6;
+        await updatePolygonById(poly.id, diffCoords, diffArea);
+      }
+    }
+
+    for (const poly of sameColorPolys) {
+      await deletePolygonById(poly.id);
+    }
+
+    await insertPolygonToSupabase({ coords: mergedCoords, color: playerColor, area: mergedArea });
+    setPoints([]);
+  };
+
+  const handleClick = (latlng) => {
     if (!playerColor) return;
     if (points.length > 2 && getDistance(latlng, points[0]) < 20) {
-      const path = [...points, points[0]];
-      const newPoly = turf.polygon([[...path.map(p => [p.lng, p.lat]), [path[0].lng, path[0].lat]]]);
-      const area = turf.area(newPoly) / 1e6;
-      const newCoords = path.map(p => [p.lat, p.lng]);
-
-      const sameColorPolys = polygonList.filter(p => p.color === playerColor);
-      const otherPolys = polygonList.filter(p => p.color !== playerColor);
-
-      // scalanie własnych
-      let merged = newPoly;
-      for (const poly of sameColorPolys) {
-        try {
-          merged = turf.union(merged, turf.polygon([[...poly.coords.map(([a,b])=>[b,a]), [poly.coords[0][1], poly.coords[0][0]]]]));
-        } catch {}
-      }
-
-      const mergedCoords = turf.getCoords(merged)[0].map(([lng, lat]) => [lat, lng]);
-      const mergedArea = turf.area(merged) / 1e6;
-
-      // odejmowanie innym
-      for (const poly of otherPolys) {
-        const basePoly = turf.polygon([[...poly.coords.map(([a,b])=>[b,a]), [poly.coords[0][1], poly.coords[0][0]]]]);
-        let diff;
-        try {
-          diff = turf.difference(basePoly, merged);
-        } catch {}
-        if (!diff) {
-          await deletePolygonById(poly.id);
-        } else {
-          const diffCoords = turf.getCoords(diff)[0].map(([lng, lat]) => [lat, lng]);
-          const diffArea = turf.area(diff) / 1e6;
-          await updatePolygonById(poly.id, diffCoords, diffArea);
-        }
-      }
-
-      // usuń swoje stare i dodaj scalony
-      for (const poly of sameColorPolys) {
-        await deletePolygonById(poly.id);
-      }
-
-      await insertPolygonToSupabase({ coords: mergedCoords, color: playerColor, area: mergedArea });
-      setPoints([]);
+      tryCapture();
     } else {
       setPoints([...points, latlng]);
     }
   };
 
+  const getStats = () => {
+    if (points.length < 2) return { distance: 0, time: 0 };
+    let dist = 0;
+    for (let i = 1; i < points.length; i++) {
+      dist += getDistance(points[i - 1], points[i]);
+    }
+    dist = dist / 1000;
+    const time = (dist / 200) * 60;
+    return { distance: dist.toFixed(2), time: time.toFixed(1) };
+  };
+
   return <>
     {!playerColor && <PlayerSelect setPlayerColor={setPlayerColor} />}
-    <Map points={points} addPoint={addPoint} polygonList={polygonList} />
+    <Map points={points} addPoint={handleClick} polygonList={polygonList} />
     <Sidebar polygonList={polygonList} />
+    {points.length >= 2 && <Toolbar onCapture={tryCapture} onReset={() => setPoints([])} stats={getStats()} />}
   </>;
 }
