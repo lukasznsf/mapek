@@ -1,4 +1,4 @@
-# Territory Capture Supabase Multiplayer
+# Territory Capture Stable
 
 1. `npm install`
 2. `npm run dev`
